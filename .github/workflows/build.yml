@@ -83,10 +83,16 @@ jobs:
         run: |
           SIGN=""
           # Vaste sleutel (geheim in GitHub): dan kan elke nieuwe versie over de oude heen.
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEY_PASS" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/letterbos.keystore"
+          KS="$RUNNER_TEMP/letterbos.keystore"
+          PASS="$(printf '%s' "$KEY_PASS" | tr -d '[:space:]')"
+          # spaties en regeleindes uit het geplakte geheim halen
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$KS" 2>/dev/null || true
+          if [ -s "$KS" ] && keytool -list -keystore "$KS" -storepass "$PASS" -alias letterbos > /dev/null 2>&1; then
+            export KEY_PASS="$PASS"
             SIGN="-p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/letterbos.keystore -p:AndroidSigningKeyAlias=letterbos -p:AndroidSigningStorePass=env:KEY_PASS -p:AndroidSigningKeyPass=env:KEY_PASS"
             echo "Ondertekend met de vaste Letterbos-sleutel"
+          elif [ -n "$KEYSTORE_B64" ]; then
+            echo "::error::De sleutel in LETTERBOS_KEYSTORE of het wachtwoord in LETTERBOS_KEY_PASS klopt niet. De APK wordt zonder vaste sleutel gebouwd."
           else
             echo "::warning::Geen vaste sleutel ingesteld (LETTERBOS_KEYSTORE). Updates kunnen dan niet over de oude versie heen. Zie LEESMIJ.md."
           fi
