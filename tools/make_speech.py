@@ -16,7 +16,7 @@ os.makedirs(out, exist_ok=True)
 VOICE = os.environ.get("LB_VOICE", "nl-NL-FennaNeural")
 PITCH = os.environ.get("LB_PITCH", "+12Hz")
 RATE = os.environ.get("LB_RATE", "-8%")
-TAG = f"{VOICE}|{PITCH}|{RATE}"
+TAG = f"{VOICE}|{PITCH}|{RATE}|v2"
 
 def fname(t):
     return hashlib.sha1((TAG + "|" + t).encode("utf-8")).hexdigest()[:12] + ".mp3"
@@ -42,10 +42,13 @@ async def edge_all():
     await asyncio.gather(*(one(t) for t in phrases))
 
 def trim(dst):
+    if dst.endswith(".done.mp3"): return
     # stilte aan begin en eind eraf, zodat zinnen vlot op elkaar volgen
     tmp = dst + ".tmp.mp3"
     r = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", dst, "-af",
-        "silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse",
+        # stilte eraf, en zachte stukjes (zoals een lange "mmmm") net zo hard maken als de rest
+        "silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse,"
+        "dynaudnorm=f=50:g=5:p=0.9:m=20,loudnorm=I=-15:TP=-1.5:LRA=7",
         "-ac", "1", "-b:a", "64k", tmp])
     if r.returncode == 0 and os.path.getsize(tmp) > 300: os.replace(tmp, dst)
 

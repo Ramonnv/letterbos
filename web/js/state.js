@@ -7,7 +7,7 @@ export function fresh() {
     items: [], wearing: [], color: 'groen', colors: ['groen'], cups: [],
     stats: { sounds: {}, words: {} },     // per klank/woord: { ok, bad, last }
     days: {},                             // per dag: { sec, rounds, ok, bad, levels }
-    perDay: 3, parent: false, unlockAll: false,
+    perDay: 3, parent: false, unlockAll: false, listen: false,
     music: true, sound: true, rate: 0.95, seenIntro: false, lastLevel: -1, firstDay: ''
   };
 }

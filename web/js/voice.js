@@ -4,7 +4,7 @@
 //   2. vooraf gemaakte spraak (assets/spraak, gemaakt door GitHub Actions met Piper)
 //   3. de computerstem van de browser (Web Speech)
 import { S } from './state.js';
-import { SOUNDS, mergeText } from './content.js';
+import { SOUNDS, mergeText, segments } from './content.js';
 import { duck } from './audio.js';
 
 let index = {};                 // tekst -> bestand
@@ -59,39 +59,33 @@ export async function say(parts, opts = {}) {
   stop();
   const my = token;
   if (!Array.isArray(parts)) parts = [parts];
-  // Zoek steeds het langste stuk dat als hele zin is ingesproken: dat klinkt het mooist.
-  // Klanken die papa/mama zelf heeft ingesproken gaan altijd voor.
-  const own = p => p && p.k && recorded['klank:' + p.k];
-  const segs = [];
-  if (opts.onPart || opts.gap) parts.forEach((p, i) => segs.push({ i, j: i + 1 }));
-  else {
-    let i = 0;
-    while (i < parts.length) {
-      let j = parts.length, found = false;
-      for (; j > i + 1; j--) {
-        const sl = parts.slice(i, j);
-        if (sl.some(own)) continue;
-        if (index[mergeText(sl)]) { found = true; break; }
-      }
-      if (!found) {
-        // geen opname: zonder vooraf gemaakte stem alles in één keer met de apparaatstem
-        if (!hasPrebuilt() && !parts.slice(i).some(own)) j = parts.length; else j = i + 1;
-      }
-      segs.push({ i, j }); i = j;
-    }
-  }
-  for (const { i, j } of segs) {
+  let idx = 0;
+  for (const g of segments(parts)) {
     if (my !== token) return false;
-    const sl = parts.slice(i, j);
-    opts.onPart && opts.onPart(i, parts[i]);
-    if (sl.length === 1 && sl[0] && sl[0].p) { await wait(sl[0].p); continue; }
+    opts.onPart && opts.onPart(idx, parts[idx]);
+    idx += g.parts.length;
+    if (g.pause) { await wait(g.pause); continue; }
     talking(true);
-    await speakOne(sl, my);
+    await speakSeg(g, my);
     if (my === token) talking(false);
     if (opts.gap) await wait(opts.gap);
+    else if (g.klank) await wait(120);   // klein pauzetje na een klank, zodat hij goed opvalt
   }
   opts.onPart && my === token && opts.onPart(-1);
   return my === token;
+}
+async function speakSeg(g, my) {
+  // 1. zelf ingesproken (klank of woord)
+  const p = g.parts.length === 1 ? g.parts[0] : null;
+  const key = p && typeof p === 'object' ? (p.k ? 'klank:' + p.k : p.w ? 'woord:' + p.w : null) : null;
+  if (key && recorded[key] && await playURL(recorded[key], my)) return;
+  if (my !== token) return;
+  // 2. vooraf gemaakte natuurlijke stem
+  const f = index[g.text];
+  if (f && await playURL('assets/spraak/' + f, my)) return;
+  if (my !== token) return;
+  // 3. stem van het apparaat
+  await synth(g.text, g.klank);
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -104,23 +98,13 @@ function playURL(url, my) {
     setTimeout(fin, 8000);
   });
 }
-async function speakOne(sl, my) {
-  const one = sl.length === 1 ? resolve(sl[0]) : null;
-  if (one && recorded[one.key] && await playURL(recorded[one.key], my)) return;
-  if (my !== token) return;
-  const text = mergeText(sl);
-  const f = index[text];
-  if (f && await playURL('assets/spraak/' + f, my)) return;
-  if (my !== token) return;
-  await synth(text, one && one.klank);
-}
 function synth(text, klank) {
   return new Promise(res => {
     try {
       if (!('speechSynthesis' in window)) return res();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'nl-NL'; if (nlVoice) u.voice = nlVoice;
-      u.rate = (S.rate || 0.95) * (klank ? 0.8 : 1); u.pitch = 1.1;
+      u.rate = (S.rate || 0.95) * (klank ? 0.7 : 1); u.pitch = 1.1; u.volume = 1;
       let done = false; const fin = () => { if (!done) { done = true; res(); } };
       u.onend = fin; u.onerror = fin;
       speechSynthesis.speak(u);
@@ -152,7 +136,7 @@ export const isRecorded = key => !!recorded[key];
 export const recordedCount = () => Object.keys(recorded).length;
 let rec = null, chunks = [], stream = null;
 export async function recStart() {
-  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   chunks = [];
   rec = new MediaRecorder(stream);
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
@@ -163,9 +147,10 @@ export function recStop(key) {
     if (!rec) return res(false);
     rec.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+      let blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
       rec = null;
       if (blob.size < 800) return res(false);
+      try { blob = await normalize(blob); } catch (e) { console.warn('normaliseren lukte niet', e); }
       await idbPut(key, blob);
       if (recorded[key]) URL.revokeObjectURL(recorded[key]);
       recorded[key] = URL.createObjectURL(blob);
@@ -176,3 +161,60 @@ export function recStop(key) {
 }
 export async function recDelete(key) { await idbPut(key, null); if (recorded[key]) URL.revokeObjectURL(recorded[key]); delete recorded[key]; }
 export function playKey(key, text) { return say([key.startsWith('klank:') ? { k: key.slice(6) } : key.startsWith('woord:') ? { w: key.slice(6) } : text]); }
+
+// Opname even hard maken als de stem van Pip: stilte eraf, en het hardste punt op bijna-maximaal.
+async function normalize(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+  ctx.close && ctx.close();
+  const sr = buf.sampleRate, n = buf.length, ch = buf.numberOfChannels;
+  const mono = new Float32Array(n);
+  for (let c = 0; c < ch; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) mono[i] += d[i] / ch; }
+  let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(mono[i]));
+  if (peak < 0.003) return blob;
+  const thr = peak * 0.08, pad = Math.round(sr * 0.06);
+  let a = 0; while (a < n && Math.abs(mono[a]) < thr) a++;
+  let b = n - 1; while (b > a && Math.abs(mono[b]) < thr) b--;
+  a = Math.max(0, a - pad); b = Math.min(n - 1, b + pad);
+  const gain = Math.min(0.92 / peak, 12);
+  const len = b - a + 1, fade = Math.min(Math.round(sr * 0.01), len >> 2);
+  const out = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    let v = mono[a + i] * gain;
+    if (i < fade) v *= i / fade; if (i > len - fade) v *= (len - i) / fade;
+    v = Math.max(-1, Math.min(1, v)); out[i] = v * 32767;
+  }
+  // WAV-bestandje maken
+  const hdr = new DataView(new ArrayBuffer(44)); const w = (o, t) => [...t].forEach((c, i) => hdr.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); hdr.setUint32(4, 36 + len * 2, true); w(8, 'WAVE'); w(12, 'fmt '); hdr.setUint32(16, 16, true); hdr.setUint16(20, 1, true); hdr.setUint16(22, 1, true);
+  hdr.setUint32(24, sr, true); hdr.setUint32(28, sr * 2, true); hdr.setUint16(32, 2, true); hdr.setUint16(34, 16, true); w(36, 'data'); hdr.setUint32(40, len * 2, true);
+  return new Blob([hdr.buffer, out.buffer], { type: 'audio/wav' });
+}
+
+// Luisteren of het kind iets zegt (alleen of er geluid is, er wordt niets opgenomen of bewaard)
+export async function listenVoice({ ms = 6000, onLevel } = {}) {
+  let st;
+  try { st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) { return null; }
+  const AC = window.AudioContext || window.webkitAudioContext; const ctx = new AC();
+  const src = ctx.createMediaStreamSource(st), an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
+  const data = new Float32Array(an.fftSize);
+  let base = 0.01, loud = 0, t0 = performance.now();
+  const result = await new Promise(res => {
+    const tick = () => {
+      an.getFloatTimeDomainData(data);
+      let sum = 0; for (const v of data) sum += v * v; const rms = Math.sqrt(sum / data.length);
+      const el = performance.now() - t0;
+      if (el < 400) base = Math.max(base, rms * 1.5);            // eerst het achtergrondgeluid meten
+      const lvl = Math.min(1, rms / Math.max(base * 4, 0.04)); onLevel && onLevel(lvl);
+      if (el > 400 && rms > Math.max(base * 3, 0.025)) loud += 16; else loud = Math.max(0, loud - 8);
+      if (loud > 250) return res(true);
+      if (el > ms) return res(false);
+      setTimeout(tick, 16);
+    };
+    tick();
+  });
+  st.getTracks().forEach(t => t.stop()); ctx.close && ctx.close(); onLevel && onLevel(0);
+  return result;
+}

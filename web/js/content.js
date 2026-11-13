@@ -19,31 +19,31 @@ export function graphemes(word) {
 export const SOUNDS = {
   i:  { say: 'ih',  key: 'ik',      pic: '🙋' },
   k:  { say: 'kuh', key: 'kaas',    pic: '🧀' },
-  m:  { say: 'mmm', key: 'maan',    pic: '🌙' },
+  m:  { say: 'mmmmm', key: 'maan',    pic: '🌙' },
   aa: { say: 'aa',  key: 'aap',     pic: '🐒' },
-  s:  { say: 'sss', key: 'slang',   pic: '🐍' },
+  s:  { say: 'sssss', key: 'slang',   pic: '🐍' },
   p:  { say: 'puh', key: 'pet',     pic: '🧢' },
-  n:  { say: 'nnn', key: 'neus',    pic: '👃' },
-  r:  { say: 'rrr', key: 'raket',   pic: '🚀' },
+  n:  { say: 'nnnnn', key: 'neus',    pic: '👃' },
+  r:  { say: 'rrrrr', key: 'raket',   pic: '🚀' },
   oo: { say: 'oo',  key: 'oor',     pic: '👂' },
-  v:  { say: 'vvv', key: 'vis',     pic: '🐟' },
+  v:  { say: 'vvvvv', key: 'vis',     pic: '🐟' },
   o:  { say: 'oh',  key: 'olifant', pic: '🐘' },
   t:  { say: 'tuh', key: 'taart',   pic: '🎂' },
   e:  { say: 'eh',  key: 'emmer',   pic: '🪣' },
   b:  { say: 'buh', key: 'beer',    pic: '🐻' },
   a:  { say: 'ah',  key: 'appel',   pic: '🍎' },
   d:  { say: 'duh', key: 'dino',    pic: '🦕' },
-  l:  { say: 'lll', key: 'lamp',    pic: '💡' },
+  l:  { say: 'lllll', key: 'lamp',    pic: '💡' },
   ee: { say: 'ee',  key: 'eend',    pic: '🦆' },
   h:  { say: 'huh', key: 'huis',    pic: '🏠' },
   oe: { say: 'oe',  key: 'koe',     pic: '🐄' },
   ui: { say: 'ui',  key: 'duim',    pic: '👍' },
   ei: { say: 'ei',  key: 'ei',      pic: '🥚' },
   eu: { say: 'eu',  key: 'deur',    pic: '🚪' },
-  z:  { say: 'zzz', key: 'zon',     pic: '☀️' },
+  z:  { say: 'zzzzz', key: 'zon',     pic: '☀️' },
   w:  { say: 'wuh', key: 'wolk',    pic: '☁️' },
-  g:  { say: 'ggg', key: 'geit',    pic: '🐐' },
-  f:  { say: 'fff', key: 'fiets',   pic: '🚲' }
+  g:  { say: 'ggggg', key: 'geit',    pic: '🐐' },
+  f:  { say: 'fffff', key: 'fiets',   pic: '🚲' }
 };
 
 // Woorden om te lezen (klank-zuiver, zoals op school: eerst korte woordjes)
@@ -122,7 +122,10 @@ export const T = {
   nieuweLetter: 'Kijk eens! Een nieuwe letter!',
   dit: 'Dit is de',
   van: 'van',
-  zeg: 'Zeg jij het ook maar:',
+  zeg: 'Zeg jij hem ook maar hardop:',
+  tikLetter: 'En tik dan op de letter!',
+  luister: 'Ik luister! Zeg het maar.',
+  hoorde: 'Ik hoorde je! Goed zo!',
   overtrek: 'Nu mag jij hem schrijven. Volg de stipjes met je vinger!',
   geef: 'Mag ik de',
   begin: 'Wat hoor je vooraan?',
@@ -165,23 +168,33 @@ export function mergeText(parts) {
   return parts.map(partText).join(' ').replace(/\s+([,.!?…:])/g, '$1').replace(/…\s*/g, '… ').replace(/\s+/g, ' ').trim();
 }
 
-// Alles wat Pip kan zeggen: losse stukjes én hele zinnen.
-// GitHub Actions maakt hier vooraf mp3'tjes van met een natuurlijke Nederlandse stem.
+// Hoe een zin wordt ingesproken: klanken altijd los (duidelijk en hard), de rest als hele zinnetjes.
+export function segments(parts) {
+  const out = []; let run = [];
+  const flush = () => { if (run.length) { out.push({ parts: run, text: mergeText(run) }); run = []; } };
+  for (const p of parts) {
+    if (p && typeof p === 'object' && p.k) { flush(); out.push({ parts: [p], text: SOUNDS[p.k].say, klank: true }); }
+    else if (p && typeof p === 'object' && p.p) { flush(); out.push({ parts: [p], pause: p.p }); }
+    else run.push(p);
+  }
+  flush();
+  return out;
+}
+
+// Alles wat Pip kan zeggen. GitHub Actions maakt hier vooraf mp3'tjes van met een natuurlijke Nederlandse stem.
 export function allPhrases() {
-  const set = new Set();
-  const add = parts => set.add(mergeText(parts));
+  const map = new Map();
+  const add = parts => segments(parts).forEach(g => { if (!g.pause) map.set(g.text, map.get(g.text) || !!g.klank); });
   Object.values(T).forEach(t => add([t])); PRAISE.forEach(t => add([t]));
   const items = [...new Set([...Object.keys(WORDS), ...Object.values(SOUNDS).map(d => d.key)])];
   for (const [s, d] of Object.entries(SOUNDS)) {
     add([{ k: s }]); add([{ w: d.key }]);
     add([T.geef, { k: s }, T.van, { w: d.key, q: true }]);
     add([T.dit, { k: s }, T.van, { w: d.key }]);
-    add([T.nieuweLetter, T.dit, { k: s }, T.van, { w: d.key }, { p: 300 }, T.zeg, { k: s }]);
     add([T.nee, { k: s }, T.nogEens]);
-    for (const it of items) if (graphemes(it)[0] === s) add([{ k: s }, T.van, { w: it }]);
   }
-  for (const w of items) { add([{ w }]); add([T.dat, { w }, T.nogEens]); add([{ w }, { p: 350 }, T.begin]); add([T.bouw, { p: 200 }, { w }]); }
+  for (const w of items) { add([{ w }]); add([T.van, { w }]); add([T.dat, { w }, T.nogEens]); add([T.bouw, { p: 200 }, { w }]); add([{ w }, { p: 350 }, T.begin]); }
   for (const r of REWARDS) add([T.kreeg, r.name + '!', T.mooi]);
   for (const W of WORLDS) add([W.name]);
-  return [...set];
+  return [...map].map(([t, klank]) => ({ t, klank }));
 }

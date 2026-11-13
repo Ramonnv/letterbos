@@ -233,3 +233,11 @@ textarea { width: 100%; margin-top: 10px; font-size: 12px; }
 .hb.badge::after { content: ""; position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: #ff4f6d; border: 2px solid #fff; }
 .p-note.upd { background: #eafff0; border: 2px solid #5fd07a; }
 a.btn { display: inline-block; padding: 12px 16px; border-radius: 14px; background: var(--paars); color: #fff; font-weight: 600; text-decoration: none; }
+
+.bigletter.tapme::after { content: "👆"; position: absolute; font-size: 70px; right: -40px; bottom: -40px; animation: tapHint2 1s ease-in-out infinite; }
+.bigletter { position: relative; }
+@keyframes tapHint2 { 50% { transform: translate(-8px, -12px); } }
+.mic { position: relative; width: 140px; height: 140px; border-radius: 50%; display: grid; place-items: center; background: #fff; box-shadow: 0 8px 0 #d9d2ff; --lvl: 0; }
+.mic-i { font-size: 70px; z-index: 1; }
+.mic i { position: absolute; inset: -6px; border-radius: 50%; border: 10px solid #5fd07a; opacity: calc(.25 + var(--lvl) * .75); transform: scale(calc(1 + var(--lvl) * .35)); transition: transform .08s, opacity .08s; }
+.mic[hidden] { display: none; }

@@ -7,7 +7,7 @@
 //  - overtrek:  schrijf de nieuwe letter met je vinger
 import { SOUNDS, WORDS, T, PRAISE, graphemes, readable } from './content.js';
 import { S, save, record, mastery } from './state.js';
-import { say, stop } from './voice.js';
+import { say, stop, listenVoice } from './voice.js';
 import { SND } from './audio.js';
 import * as W from './world.js';
 
@@ -136,7 +136,8 @@ async function wrong(el, sayParts) {
 async function right(el, sayParts = []) {
   SND.good();
   if (el) el.classList.add('good');
-  await say(sayParts.concat([praise()]));
+  if (sayParts.length) await say(sayParts);
+  await say([praise()]);
 }
 // Na 2 fouten wijst Pip de goede aan, zodat ze nooit vastloopt
 function helpAfter(n, el) { if (n >= 2 && el && !el.classList.contains('hint')) { el.classList.add('hint'); say([T.hulp]); } }
@@ -144,20 +145,30 @@ function helpAfter(n, el) { if (n >= 2 && el && !el.classList.contains('hint')) 
 /* ============ intro: een nieuwe letter ============ */
 async function intro(s) {
   const d = SOUNDS[s];
-  const el = show(`<div class="g-intro"><button class="bigletter">${s}</button><div class="keypic"><span class="pic">${d.pic}</span><span class="kw">${d.key}</span></div></div>`);
-  const btn = el.querySelector('.bigletter');
+  const el = show(`<div class="g-intro"><button class="bigletter">${s}</button><div class="keypic"><span class="pic">${d.pic}</span><span class="kw">${d.key}</span></div><div class="mic" hidden><span class="mic-i">🎤</span><i></i></div></div>`);
+  const btn = el.querySelector('.bigletter'), mic = el.querySelector('.mic');
+  el.querySelector('.keypic').onclick = () => say([T.dit, { k: s }, T.van, { w: d.key }]);
   W.play('happy');
-  await prompt([T.nieuweLetter, T.dit, { k: s }, T.van, { w: d.key }, { p: 300 }, T.zeg, { k: s }]);
-  let taps = 0;
+  await prompt([T.nieuweLetter, T.dit, { k: s }, T.van, { w: d.key }]);
+  // Nazeggen. Met microfoon (Ouders → Instellingen) luistert Pip echt; anders tikt ze daarna op de letter.
+  if (S.listen && navigator.mediaDevices) {
+    await say([T.zeg, { k: s }]);
+    await say([T.luister]);
+    mic.hidden = false; W.play('listen');
+    const heard = await listenVoice({ ms: 7000, onLevel: v => mic.style.setProperty('--lvl', v) });
+    mic.hidden = true;
+    if (heard) { SND.good(); W.play('happy'); W.sparkleAtPip(); await say([T.hoorde]); return; }
+  }
+  currentPrompt = () => say([T.zeg, { k: s }, T.tikLetter]);
+  await say([T.zeg, { k: s }, T.tikLetter]);
+  btn.classList.add('wiggle', 'tapme');
   return new Promise(res => {
-    const go = async () => {
+    btn.onclick = async () => {
+      btn.onclick = null; btn.classList.remove('tapme');
       SND.tap(); btn.classList.remove('pulse'); void btn.offsetWidth; btn.classList.add('pulse');
-      taps++; await say([{ k: s }]);
-      if (taps >= 2) { btn.onclick = null; W.play('happy'); await say([praise()]); res(); }
+      await say([{ k: s }]);
+      W.play('happy'); await say([praise()]); res();
     };
-    btn.onclick = go;
-    el.querySelector('.keypic').onclick = () => say([T.dit, { k: s }, T.van, { w: d.key }]);
-    btn.classList.add('wiggle');
   });
 }
 
@@ -188,7 +199,7 @@ async function trace(s) {
     let finished = false, down = false;
     const done = async () => {
       if (finished) return; finished = true; SND.win(); W.play('happy'); W.sparkleAtPip();
-      pts.forEach(p => p.hit = true); draw(); await say([praise(), T.dit, { k: s }]); res();
+      pts.forEach(p => p.hit = true); draw(); await say([praise()]); await say([T.dit, { k: s }]); res();
     };
     const at = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
     const touch = (e) => {

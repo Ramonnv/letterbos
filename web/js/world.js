@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import * as M from './models.js';
 import { S } from './state.js';
 import { SND } from './audio.js';
-import { LEVELS, WORLDS, PIP_COLORS } from './content.js';
+import { LEVELS, WORLDS, PIP_COLORS, SLOT } from './content.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -216,7 +216,7 @@ function buildStones() {
     const label = L.type === 'klank' ? L.sound : L.type === 'woord' ? 'abc' : '🎉';
     const tex = letterTex(label, { stroke: STROKE[L.world] });
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    sp.scale.setScalar(L.type === 'klank' ? 1.25 : 1.1); sp.position.copy(p).add(V(0, 1.45, 0));
+    sp.scale.setScalar(L.type === 'klank' ? 1.25 : 1.1); sp.position.copy(p).add(V(0, 2.4, 0));
     scene.add(sp);
     const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#fff27a', transparent: true, opacity: 0.0, depthWrite: false }));
     ring.position.copy(p).add(V(0, 0.45, 0)); scene.add(ring);
@@ -271,7 +271,8 @@ function buildPip() {
 }
 export function applyLook() {
   if (!pip) return;
-  for (const [n, o] of Object.entries(pipParts)) if (n.startsWith('acc_')) o.visible = S.wearing.includes(n.slice(4));
+  // alleen de accessoire-onderdelen zelf (in Blender-modellen hebben ze ook kind-stukjes zoals acc_kroon_1)
+  for (const id of Object.keys(SLOT)) { const o = pipParts['acc_' + id]; if (o) { o.visible = S.wearing.includes(id); o.traverse(c => { if (c !== o) c.visible = true; }); } }
   M.recolor(pip, PIP_COLORS[S.color] || PIP_COLORS.groen);
 }
 export function popAccessory(id) {
@@ -533,8 +534,10 @@ function loop() {
   scene.userData.chunks.forEach(g => { g.visible = g.userData.z < pz + 26 && g.userData.z > pz - 70; });
   stones.forEach((s, i) => {
     const near = i - anim.pip.stone < 18 && i - anim.pip.stone > -4;
-    s.sp.visible = near && i >= anim.pip.stone; s.starsG.visible = near; s.st.visible = near; s.ring.visible = near; if (s.cup) s.cup.visible = near;
-    s.sp.position.y = s.p.y + 1.45 + (s.isNext ? Math.abs(Math.sin(t * 3)) * 0.25 : Math.sin(t * 1.5 + i) * 0.05);
+    s.sp.visible = near && (i > anim.pip.stone || s.isNext); s.starsG.visible = near; s.st.visible = near; s.ring.visible = near; if (s.cup) s.cup.visible = near;
+    s.sp.position.y = s.p.y + (s.isNext ? 2.6 + Math.abs(Math.sin(t * 3)) * 0.3 : 2.2 + Math.sin(t * 1.5 + i) * 0.05);
+    s.sp.scale.setScalar(s.isNext ? 1.9 + 0.1 * Math.sin(t * 3) : (s.L.type === 'klank' ? 1.2 : 1.05));
+    s.sp.material.depthTest = !s.isNext; s.sp.renderOrder = s.isNext ? 10 : 0;
     s.ring.material.opacity = s.isNext ? 0.45 + 0.35 * Math.sin(t * 4) : 0;
     s.ring.scale.setScalar(s.isNext ? 1 + 0.08 * Math.sin(t * 4) : 1);
     if (s.cup) s.cup.rotation.y = t * 0.8;

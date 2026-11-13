@@ -266,6 +266,8 @@ function settings(body, onChange) {
       <select id="sPer">${[1, 2, 3, 4, 5, 0].map(n => `<option value="${n}" ${S.perDay === n ? 'selected' : ''}>${n || 'onbeperkt'}</option>`).join('')}</select>
       <small>Een paar nieuwe letters per dag is genoeg voor een kleuter. Oude levels kan ze altijd opnieuw spelen.</small></label>
     <label class="pf">Spreeksnelheid computerstem <input id="sRate" type="range" min="0.6" max="1.2" step="0.05" value="${S.rate}"></label>
+    <label class="pc"><input type="checkbox" id="sListen" ${S.listen ? 'checked' : ''}> Pip luistert mee bij het nazeggen (microfoon)</label>
+    <p class="p-note small">Als dit aan staat, zegt Pip "Ik luister!" en ziet je kind een microfoon die beweegt als ze praat. Pip hoort alleen <i>dat</i> ze iets zegt (niet wát), en er wordt niets opgenomen of bewaard. Uit: ze zegt de klank hardop en tikt dan op de letter.</p>
     <label class="pc"><input type="checkbox" id="sMusic" ${S.music ? 'checked' : ''}> Muziek</label>
     <label class="pc"><input type="checkbox" id="sSound" ${S.sound ? 'checked' : ''}> Geluidjes</label>
     <label class="pc"><input type="checkbox" id="sAll" ${S.unlockAll ? 'checked' : ''}> Alle levels open (om vooruit te kijken)</label>
@@ -279,6 +281,10 @@ function settings(body, onChange) {
   q('#sPer').onchange = e => { S.perDay = +e.target.value; save(); onChange && onChange(); };
   q('#sRate').oninput = e => { S.rate = +e.target.value; save(); };
   q('#sRate').onchange = () => say([T.test]);
+  q('#sListen').onchange = async e => {
+    S.listen = e.target.checked; save();
+    if (S.listen) { try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); } catch (err) { alert('De microfoon mag niet gebruikt worden. Sta hem toe in de instellingen van de browser of app.'); S.listen = false; e.target.checked = false; save(); } }
+  };
   q('#sMusic').onchange = e => { S.music = e.target.checked; save(); musicOn(S.music); };
   q('#sSound').onchange = e => { S.sound = e.target.checked; save(); };
   q('#sAll').onchange = e => { S.unlockAll = e.target.checked; save(); W.refreshStones(); onChange && onChange(); };
