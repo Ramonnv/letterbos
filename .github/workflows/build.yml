@@ -43,7 +43,8 @@ jobs:
         run: |
           pip install --quiet edge-tts piper-tts
           node tools/phrases.mjs > /tmp/phrases.json
-          python3 tools/make_speech.py /tmp/phrases.json web/assets/spraak || echo "stem overgeslagen, het spel gebruikt dan de stem van het apparaat"
+          python3 tools/make_speech.py /tmp/phrases.json web/assets/spraak
+          test -s web/assets/spraak/index.json
       - name: Icoontjes van de app
         run: python3 tools/make_icons.py web/assets/renders/pip.png || echo "icoontjes overgeslagen"
       - name: Overzicht

@@ -10,7 +10,11 @@
 # Lukt edge-tts niet (geen internet), dan valt het terug op Piper (offline, minder mooi).
 import json, sys, os, hashlib, asyncio, subprocess
 
-phrases = json.load(open(sys.argv[1]))
+raw = json.load(open(sys.argv[1]))
+# lijst van {"t": tekst, "klank": true/false} (of gewoon teksten)
+items = [(x, False) if isinstance(x, str) else (x["t"], bool(x.get("klank"))) for x in raw]
+phrases = [t for t, _ in items]
+is_klank = {t: k for t, k in items}
 out = sys.argv[2]
 os.makedirs(out, exist_ok=True)
 VOICE = os.environ.get("LB_VOICE", "nl-NL-FennaNeural")
@@ -33,7 +37,8 @@ async def edge_all():
         async with sem:
             for attempt in range(4):
                 try:
-                    await edge_tts.Communicate(t, VOICE, rate=RATE, pitch=PITCH).save(dst)
+                    rate = "-30%" if is_klank.get(t) else RATE   # klanken langzaam en duidelijk
+                    await edge_tts.Communicate(t, VOICE, rate=rate, pitch=PITCH).save(dst)
                     if os.path.getsize(dst) > 500: break
                 except Exception as e:
                     print("opnieuw:", t, e, flush=True); await asyncio.sleep(2 + attempt * 3)
@@ -83,3 +88,5 @@ for t in phrases:
         trim(dst); index[t] = fname(t)
 json.dump(index, open(os.path.join(out, "index.json"), "w"), ensure_ascii=False, indent=0)
 print("klaar:", len(index), "van", len(phrases), "zinnen", flush=True)
+if len(index) < 0.95 * len(phrases):
+    sys.exit("Te weinig zinnen gemaakt: de app zou (deels) stil zijn")
