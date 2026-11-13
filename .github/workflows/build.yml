@@ -1,0 +1,126 @@
+name: Bouw Pip & het Letterbos
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: bouw-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1. Blender bouwt de 3D-modellen en rendert de plaatjes; Piper maakt de stem van Pip
+  modellen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Blender installeren
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 libegl1 ffmpeg > /dev/null
+          curl -sSL https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz | tar -xJ
+          echo "$PWD/blender-4.2.3-linux-x64" >> "$GITHUB_PATH"
+      - name: Recepten en versienummer
+        run: |
+          node tools/recipes.mjs > web/assets/models.json
+          echo "{\"build\": ${{ github.run_number }}, \"versie\": \"1.${{ github.run_number }}\", \"datum\": \"$(date +%Y-%m-%d)\"}" > web/version.json
+          cat web/version.json
+      - name: Modellen bouwen en renderen (Blender CLI)
+        env:
+          LB_SAMPLES: "96"
+          LB_RES: "384"
+        run: blender -b --factory-startup -P blender/build_assets.py -- web/assets/models.json web/assets
+      - name: Lettertypes ophalen
+        run: python3 tools/get_font.py web/fonts || echo "lettertypes overgeslagen"
+      - name: Stem van Pip maken (natuurlijke Nederlandse stem)
+        run: |
+          pip install --quiet edge-tts piper-tts
+          node tools/phrases.mjs > /tmp/phrases.json
+          python3 tools/make_speech.py /tmp/phrases.json web/assets/spraak || echo "stem overgeslagen, het spel gebruikt dan de stem van het apparaat"
+      - name: Icoontjes van de app
+        run: python3 tools/make_icons.py web/assets/renders/pip.png || echo "icoontjes overgeslagen"
+      - name: Overzicht
+        run: ls -la web/assets/models web/assets/renders web/assets/icons; ls web/assets/spraak | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appicons
+          path: Resources
+
+  # 2. De Android-app (APK)
+  apk:
+    needs: modellen
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web, path: web }
+      - uses: actions/download-artifact@v4
+        with: { name: appicons, path: Resources }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "10.0.x" }
+      - name: Android-onderdelen voor .NET
+        run: dotnet workload install android
+      - name: Spel in de app zetten
+        run: rm -rf Assets && cp -r web Assets
+      - name: APK bouwen
+        env:
+          KEYSTORE_B64: ${{ secrets.LETTERBOS_KEYSTORE }}
+          KEY_PASS: ${{ secrets.LETTERBOS_KEY_PASS }}
+        run: |
+          SIGN=""
+          # Vaste sleutel (geheim in GitHub): dan kan elke nieuwe versie over de oude heen.
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEY_PASS" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/letterbos.keystore"
+            SIGN="-p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/letterbos.keystore -p:AndroidSigningKeyAlias=letterbos -p:AndroidSigningStorePass=env:KEY_PASS -p:AndroidSigningKeyPass=env:KEY_PASS"
+            echo "Ondertekend met de vaste Letterbos-sleutel"
+          else
+            echo "::warning::Geen vaste sleutel ingesteld (LETTERBOS_KEYSTORE). Updates kunnen dan niet over de oude versie heen. Zie LEESMIJ.md."
+          fi
+          dotnet publish Letterbos.csproj -f net10.0-android -c Release "-p:AndroidSdkDirectory=$ANDROID_SDK_ROOT" -p:ApplicationVersion=${{ github.run_number }} -p:ApplicationDisplayVersion=1.${{ github.run_number }} $SIGN
+      - name: APK klaarzetten
+        run: cp "$(ls bin/Release/net10.0-android/publish/*-Signed.apk | head -1)" Letterbos.apk && ls -la Letterbos.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: Letterbos-apk, path: Letterbos.apk }
+      - name: Release bijwerken
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nieuwste -y --cleanup-tag || true
+          {
+            echo "**Versie 1.${{ github.run_number }}**"
+            echo ""
+            echo "Download **Letterbos.apk** op de tablet en open hem. Bij een update installeer je hem gewoon over de oude heen: de voortgang blijft bewaard."
+            echo ""
+            echo "Gebouwd vanaf ${GITHUB_SHA::7}."
+          } > notes.md
+          gh release create nieuwste Letterbos.apk --title "Pip & het Letterbos (nieuwste versie)" --latest --notes-file notes.md
+
+  # 3. De web-app op GitHub Pages
+  web:
+    needs: modellen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: web, path: web }
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web }
+      - id: deploy
+        uses: actions/deploy-pages@v4

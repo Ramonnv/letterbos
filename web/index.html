@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7b6bff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Pip &amp; het Letterbos</title>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.min.js", "three/addons/": "./lib/addons/" } }</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&family=Baloo+2:wght@400..800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="loading">
+  <div class="ld-inner">
+    <div class="ld-pip">🐉</div>
+    <div class="ld-title">Pip &amp; het Letterbos</div>
+    <div class="ld-bar"><i id="loadbar"></i></div>
+  </div>
+</div>
+
+<div id="title"></div>
+
+<div id="hud">
+  <div class="h-left">
+    <div class="pill">⭐ <span id="starsN">0</span></div>
+    <div class="pill">🏆 <span id="cupsN">0</span></div>
+  </div>
+  <div class="h-right">
+    <button class="hb" id="bBook" aria-label="Mijn letters">🔤</button>
+    <button class="hb" id="bKast" aria-label="Pip aankleden">👗</button>
+    <button class="hb" id="bCups" aria-label="Prijzenkast">🏆</button>
+    <button class="hb small" id="bParent" aria-label="Ouders">⚙️</button>
+  </div>
+  <button id="bGo" aria-label="Volgende steen">▶</button>
+</div>
+
+<div id="bubble"></div>
+<div id="print"></div>
+
+<script>window.LB_APP = location.hostname === 'appassets.androidplatform.net';</script>
+<script type="module" src="js/main.js"></script>
+<script>if ('serviceWorker' in navigator && !window.LB_APP && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+</body>
+</html>
