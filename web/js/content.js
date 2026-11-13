@@ -191,6 +191,8 @@ export function allPhrases() {
     add([{ k: s }]); add([{ w: d.key }]);
     add([T.geef, { k: s }, T.van, { w: d.key, q: true }]);
     add([T.dit, { k: s }, T.van, { w: d.key }]);
+    add([T.nieuweLetter, T.dit, { k: s }, T.van, { w: d.key }]);
+    add([T.zeg, { k: s }, T.tikLetter]);
     add([T.nee, { k: s }, T.nogEens]);
   }
   for (const w of items) { add([{ w }]); add([T.van, { w }]); add([T.dat, { w }, T.nogEens]); add([T.bouw, { p: 200 }, { w }]); add([{ w }, { p: 350 }, T.begin]); }

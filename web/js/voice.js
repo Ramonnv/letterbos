@@ -84,6 +84,11 @@ async function speakSeg(g, my) {
   const f = index[g.text];
   if (f && await playURL('assets/spraak/' + f, my)) return;
   if (my !== token) return;
+  // zin niet als geheel ingesproken? Dan de losse stukjes achter elkaar
+  if (g.parts.length > 1 && g.parts.every(q => index[mergeText([q])])) {
+    for (const q of g.parts) { if (my !== token) return; await playURL('assets/spraak/' + index[mergeText([q])], my); }
+    return;
+  }
   // 3. stem van het apparaat
   await synth(g.text, g.klank);
 }
