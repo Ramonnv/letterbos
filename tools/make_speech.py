@@ -74,15 +74,30 @@ def piper_all():
             voice.synthesize_wav(t, wf) if hasattr(voice, "synthesize_wav") else voice.synthesize(t, wf)
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", "/tmp/lb.wav", "-ac", "1", "-b:a", "64k", dst], check=True)
 
+_own_dir = os.environ.get("LB_STEM", "stem/lotte")
+_own = json.load(open(os.path.join(_own_dir, "index.json"))) if os.path.exists(os.path.join(_own_dir, "index.json")) else {}
+phrases_all = phrases
+phrases = [t for t in phrases_all if t not in _own]   # alleen wat nog ontbreekt
+print("te maken met computerstem:", len(phrases), flush=True)
 try:
     asyncio.run(edge_all())
     print("stem: edge-tts", VOICE, flush=True)
 except Exception as e:
     print("edge-tts lukte niet:", e, "→ Piper", flush=True)
     piper_all()
+phrases = phrases_all
 
 index = {}
+# Vooraf ingesproken stem (bijv. Lotte uit Canva) gaat voor: alleen ontbrekende zinnen worden gemaakt
+import shutil
+own_dir = os.environ.get("LB_STEM", "stem/lotte")
+own = {}
+if os.path.exists(os.path.join(own_dir, "index.json")):
+    own = json.load(open(os.path.join(own_dir, "index.json")))
+    print("eigen stem:", own_dir, len(own), "zinnen", flush=True)
 for t in phrases:
+    if t in own and os.path.exists(os.path.join(own_dir, own[t])):
+        shutil.copy(os.path.join(own_dir, own[t]), os.path.join(out, "own_" + own[t])); index[t] = "own_" + own[t]; continue
     dst = os.path.join(out, fname(t))
     if os.path.exists(dst) and os.path.getsize(dst) > 300:
         trim(dst); index[t] = fname(t)
